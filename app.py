@@ -33,6 +33,9 @@ class SmartBusinessIntelligence:
 		self.product_data = None
 		self.geografis_data = None
 		self.sales_data = None
+
+		self.news_articles = []
+		self.social_posts = []
 		
 		# Load data if provided
 		if data_path:
@@ -61,11 +64,19 @@ class SmartBusinessIntelligence:
 					print(f"Loaded product data: {len(product_data)} rows")
 					print("Product data columns:", product_data.columns.tolist())
 					
+					self.product_data = product_data
+					self.product_data = product_data.dropna(how='all').reset_index(drop=True)
+					self.product_data.columns = self.product_data.columns.str.strip()
+					self.product_data.columns = self.product_data.columns.str.replace('\u00a0', '', regex=True)
+
 					# Clean and process data
 					self.business_data = business_info.dropna(how='all').reset_index(drop=True)
 					self.product_data = product_data.dropna(how='all').reset_index(drop=True)
 					self.geografis_data = geografis_data.dropna(how='all').reset_index(drop=True)
-					
+					print("Kolom tersedia:", self.product_data.columns.tolist())
+					print("Kolom product_data:", [repr(col) for col in self.product_data.columns])
+
+
 					# Try to load customer data, but don't fail if it doesn't exist
 					try:
 						customer_data = pd.read_excel(data_path, sheet_name='Customer')
@@ -118,7 +129,8 @@ class SmartBusinessIntelligence:
 					'City': ''
 				}])
 			
-			# Extract menu/product data
+			# Extract menu/product data]
+
 			if 'product' in data.get('business_data', {}):
 				menu_items = data['business_data']['product']
 				self.product_data = pd.DataFrame([{
@@ -161,6 +173,81 @@ class SmartBusinessIntelligence:
 		except Exception as e:
 			print(f"Error processing JSON input: {str(e)}")
 	
+	#baru
+	def load_news_articles_csv(self, filepath):
+		"""Load news articles from a CSV file"""
+		try:
+			df = pd.read_csv(filepath)
+			self.news_articles = df.to_dict(orient='records')
+			print(f"Loaded {len(self.news_articles)} news articles from {filepath}")
+		except Exception as e:
+			print(f"Error loading news articles: {e}")
+
+	def load_social_posts_csv(self, csv_path, limit=5):
+			"""Load limited social media posts from a CSV file"""
+			try:
+				self.social_posts = []
+				df = pd.read_csv(csv_path).head(limit)  # ✅ Ambil hanya 'limit' baris pertama
+				for _, row in df.iterrows():
+					self.social_posts.append({
+						"platform": row.get("platform", ""),
+						"post_id": row.get("post_id", ""),
+						"caption": row.get("captions", ""),
+						"date": row.get("post_date", ""),
+						"url": row.get("url", ""),
+						"source": "social"
+					})
+				print(f"[DEBUG] Loaded {len(self.social_posts)} social posts")
+			except Exception as e:
+				print(f"[ERROR] Failed to load social posts: {e}")
+
+	def generate_news_summaries(self, limit=5):
+		from langchain_community.llms import Ollama
+		from langchain_core.prompts import PromptTemplate
+		from langchain_core.output_parsers import StrOutputParser
+		from langchain.chains import LLMChain
+
+		llm = Ollama(model="openhermes")
+		parser = StrOutputParser()
+
+		prompt = PromptTemplate(
+			template="""
+			Buatlah ringkasan singkat dan padat dari artikel berikut:
+
+			{article}
+
+			Ringkasan:
+			""",
+			input_variables=["article"],
+		)
+
+		summary_chain = LLMChain(llm=llm, prompt=prompt, output_parser=parser)
+
+		# Ambil berita unik berdasarkan URL
+		df = pd.DataFrame(self.news_articles)
+		grouped = df.groupby("url").agg({
+			"title": "first",
+			"source": "first",
+			"date": "first",
+			"url": "first",
+			"content": lambda x: "\n".join(x)  # gabungkan konten paragraf
+		}).reset_index()
+
+		summaries = []
+		for _, row in grouped.head(limit).iterrows():
+			summary = summary_chain.invoke({"article": row["content"]})
+			summaries.append({
+				"title": row["title"],
+				"source": row["source"],
+				"date": row["date"],
+				"url": row["url"],
+				"summary": summary
+			})
+
+		self.news_trends = summaries
+		print(f"[DEBUG] Generated {len(self.news_trends)} news summaries")
+
+
 	def load_competitor_data(self, competitor_file):
 		"""Load competitor data from CSV file"""
 		try:
@@ -208,7 +295,7 @@ class SmartBusinessIntelligence:
 
 		# print("=== PRODUCT DATA ===")
 		# print(self.product_data)
-		# print(self.product_data['Nama Menu'])		
+		print(self.product_data['Nama Menu'])		
 		# print("=== PRODUCT DATA ===")
 
 		if self.product_data is None or len(self.product_data) < 2:
@@ -1051,18 +1138,57 @@ class SmartBusinessIntelligence:
 		# Generate pricing trends
 		pricing_trends = self._generate_pricing_trends()
 		
+		# Generate news trends from news_articles BARU
+		news_trends = self._generate_news_trends()
+		# Generate social media trends from social_posts BARU
+		social_media_trends = self._generate_social_trends()
+
 		# Generate recommendations based on trends
 		trend_recommendations = self._generate_trend_recommendations(
 			food_trends, consumer_trends, pricing_trends
 		)
-		
+
 		return {
 			"food_trends": food_trends,
 			"consumer_trends": consumer_trends,
 			"pricing_trends": pricing_trends,
+			"news_trends" : news_trends, #baru
+			"social_media_trends" : social_media_trends, #baru
 			"recommendations": trend_recommendations
 		}
 	
+	#baru
+	def _generate_news_trends(self):
+		if not hasattr(self, 'news_articles') or not self.news_articles:
+			return []
+
+		trends = []
+		for article in self.news_articles[:3]: 
+			trends.append({
+				"title": article.get("title") or article.get("judul", "Tanpa Judul"),
+				"summary": article.get("summary") or article.get("konten", "")[:150],
+				"source": article.get("source", "unknown"),
+				"date": article.get("published_date", "unknown"),
+				"url": article.get("url", "")
+			})
+		return trends
+
+	def _generate_social_trends(self):
+		if not hasattr(self, "social_posts") or not self.social_posts:
+			return []
+
+		trends = []
+		for post in self.social_posts:
+			trends.append({
+				"title": post.get("caption", "")[:100],  # batasi 100 char
+				"summary": "",  
+				"source": post.get("platform", "social"),
+				"date": post.get("date", ""),
+				"url": post.get("url", "")
+			})
+		return trends
+
+
 	def _generate_food_trends(self):
 		"""Generate food trend analysis"""
 		# In a real system, this would analyze news articles, social media, etc.
@@ -1979,9 +2105,9 @@ def main():
 	# Load competitor data
 	sbi.load_competitor_data("competitor.csv")
 
-	geografis = sbi.geografis_analysis()
+	# geografis = sbi.geografis_analysis()
 	print("\n=== Geografis Analysis ===")
-	print(geografis)
+	# print(geografis)
 	
 	# Generate cross-sell recommendations
 	cross_sell = sbi.cross_sell_intelligence()
