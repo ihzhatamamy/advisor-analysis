@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from app import SmartBusinessIntelligence
+import requests
 
 st.set_page_config(page_title="Advisor System BI", layout="wide")
 
@@ -77,9 +78,39 @@ if merchant_file and competitor_file:
 
     # Downloadable report
     if st.button("Generate Full Report"):
-        report = sbi.generate_report()
-        st.subheader("Executive Summary")
-        st.write(report["executive_summary"])
-        st.json(report)
+        # Tampilkan loading spinner saat proses berjalan
+        with st.spinner("Sedang memproses dengan Ollama, mohon tunggu..."):
+            # 1. Generate report lokal
+            report = sbi.generate_report()
+            #st.subheader("Executive Summary")
+            #st.write(report["executive_summary"])
+
+            # 2. Siapkan payload untuk Ollama
+            url = "http://localhost:11434/api/generate"
+            payload = {
+                "model": "qwen2.5vl:32b",
+                "prompt": f"Rapihkan JSON berikut menjadi sebuah laporan yang mudah dibaca, terstruktur, dan terjemahkan seluruh isinya ke dalam bahasa Indonesia yang baik dan benar.  Hanya tampilkan laporan/hasil akhirnya tanpa menambahkan informasi lain selain kesimpulan yang ada di JSON tersebut: \n\n{report}",
+                "stream": False
+            }
+
+            # 3. Kirim permintaan ke Ollama
+            response = requests.post(url, json=payload)
+
+            # Parsing JSON langsung
+            data = response.json()
+
+            # Ambil bagian 'response'
+            hasil = data.get("response", "")
+
+            print("Full response dari model:", hasil)
+
+            print(response.json())
+
+            # 4. Ambil hasil dari Ollama
+            hasil_ollama = response.json()["response"]
+
+            # 5. Tampilkan hasil ke user
+            st.write(hasil_ollama)
+    
 else:
     st.info("Please upload both Merchant Excel and Competitor CSV files to start analysis.")

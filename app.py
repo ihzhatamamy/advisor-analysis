@@ -1304,6 +1304,7 @@ class SmartBusinessIntelligence:
 					"interpretation": f"Peringatan: Total bobot Anda adalah {total_bobot*100:.0f}%, bukan 100%. Harap periksa kembali."
 				}
 			# Hitung nilai dengan mengalikan bobot dan skor
+			self.geografis_data['Aspek'] = self.geografis_data['Faktor Analisis Geografis']
 			self.geografis_data['Nilai'] = self.geografis_data['Bobot (%)'] * self.geografis_data['Penilaian Lokasi (1-5)']
 			skor_akhir = self.geografis_data['Nilai'].sum()
 			# Interpretasi
@@ -1315,11 +1316,13 @@ class SmartBusinessIntelligence:
 				interpretation = "🤔 Skor cukup. Ada beberapa aspek yang perlu diperbaiki."
 			else:
 				interpretation = "⚠️ Skor rendah. Lokasi ini memiliki banyak tantangan."
+
+
 			return {
 				"status": "success",
 				"score": round(skor_akhir, 2),
 				"interpretation": interpretation,
-				"detail": self.geografis_data[['Bobot (%)', 'Penilaian Lokasi (1-5)', 'Nilai']].to_dict(orient='records')
+				"detail": self.geografis_data[['Aspek','Bobot (%)', 'Penilaian Lokasi (1-5)', 'Nilai']].to_dict(orient='records')
 			}
 		except Exception as e:
 			return {
@@ -1690,7 +1693,6 @@ class SmartBusinessIntelligence:
 			},
 			"geografis_analysis": {
 				"insights": dashboard["geografis_analysis"],
-				"visualization": visualizations["trend_analysis"]
 			},
 			"market_trends": {
 				"insights": dashboard["trend_analysis"],
