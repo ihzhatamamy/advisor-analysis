@@ -1910,7 +1910,12 @@ class SmartBusinessIntelligence:
 		food_trends = dashboard["trend_analysis"].get("food_trends", [])
 		if food_trends:
 			conclusion += f"Aligning with market trends such as {food_trends[0]} will be crucial for future success. "
-		
+			
+		#BARU
+		news_trends = dashboard["trend_analysis"].get("news_trends", [])
+		if news_trends:
+			conclusion += f"Additionally, trending business ideas like {news_trends[0]['topic']} from recent news & social media sources show strong market interest. "
+
 		# Add final recommendation
 		conclusion += "By implementing the strategic recommendations outlined in this report, "
 		conclusion += f"{business_name} can enhance its competitive position and drive sustainable growth."
