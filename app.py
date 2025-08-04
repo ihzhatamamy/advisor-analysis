@@ -16,6 +16,23 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
+#baru
+from collections import Counter
+import re
+from collections import Counter
+from nltk.corpus import stopwords
+from nltk import pos_tag, word_tokenize
+import nltk
+nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk import pos_tag
+from collections import Counter
+import string
+
+
 # Optional: Ollama integration for AI capabilities
 try:
 	import ollama
@@ -183,69 +200,62 @@ class SmartBusinessIntelligence:
 		except Exception as e:
 			print(f"Error loading news articles: {e}")
 
-	def load_social_posts_csv(self, csv_path, limit=5):
-			"""Load limited social media posts from a CSV file"""
-			try:
-				self.social_posts = []
-				df = pd.read_csv(csv_path).head(limit)  # ✅ Ambil hanya 'limit' baris pertama
-				for _, row in df.iterrows():
-					self.social_posts.append({
-						"platform": row.get("platform", ""),
-						"post_id": row.get("post_id", ""),
-						"caption": row.get("captions", ""),
-						"date": row.get("post_date", ""),
-						"url": row.get("url", ""),
-						"source": "social"
-					})
-				print(f"[DEBUG] Loaded {len(self.social_posts)} social posts")
-			except Exception as e:
-				print(f"[ERROR] Failed to load social posts: {e}")
+	def load_social_post_text(self,csv_path="social_posts.csv"):
+		df = pd.read_csv(csv_path)
+		print(df.columns)
+		df = df.dropna(subset=["text_context"])  # Buang baris tanpa transkrip
+		combined_text = " ".join(df["text_context"].astype(str).tolist())
+		return combined_text
 
-	def generate_news_summaries(self, limit=5):
-		from langchain_community.llms import Ollama
-		from langchain_core.prompts import PromptTemplate
-		from langchain_core.output_parsers import StrOutputParser
-		from langchain.chains import LLMChain
+	def social_trend_observatory(self):
+		text_data = self.load_social_post_text("social_posts.csv")
+		return extract_top_topics(text_data, top_n=10)
 
-		llm = Ollama(model="openhermes")
-		parser = StrOutputParser()
+	def load_and_merge_news_articles(self, csv_path):
+		df = pd.read_csv(csv_path)
 
-		prompt = PromptTemplate(
-			template="""
-			Buatlah ringkasan singkat dan padat dari artikel berikut:
+		# Pastikan kolom penting ada
+		required_cols = ["url", "content"]
+		for col in required_cols:
+			if col not in df.columns:
+				raise ValueError(f"Missing column: {col}")
 
-			{article}
+		if "metadata" in df.columns and df["metadata"].str.contains("paragraph").any():
+			# Ambil urutan chunk dari metadata
+			df["para_idx"] = df["metadata"].str.extract(r'paragraph\s*(\d+)').astype(float)
+			df = df.sort_values(by=["url", "para_idx"])
+		else:
+			df["para_idx"] = 0
+			df = df.sort_values(by=["url"])
 
-			Ringkasan:
-			""",
-			input_variables=["article"],
-		)
+		# Gabungkan text_content jadi full artikel per URL
+		merged = df.groupby("url")["content"].apply(lambda x: "\n".join(x)).reset_index()
 
-		summary_chain = LLMChain(llm=llm, prompt=prompt, output_parser=parser)
+		print(f"[DEBUG] Ditemukan {len(merged)} artikel unik")
+		return merged
+ 
+	def extract_top_topics(articles, top_n=10):
+		text_data = " ".join([a.get("title", "") + " " + a.get("summary", "") for a in articles])
+		text_data = text_data.lower()
 
-		# Ambil berita unik berdasarkan URL
-		df = pd.DataFrame(self.news_articles)
-		grouped = df.groupby("url").agg({
-			"title": "first",
-			"source": "first",
-			"date": "first",
-			"url": "first",
-			"content": lambda x: "\n".join(x)  # gabungkan konten paragraf
-		}).reset_index()
+		# Tokenisasi & filter hanya huruf
+		words = re.findall(r'\b[a-zA-Z]+\b', text_data)
 
-		summaries = []
-		for _, row in grouped.head(limit).iterrows():
-			summary = summary_chain.invoke({"article": row["content"]})
-			summaries.append({
-				"title": row["title"],
-				"source": row["source"],
-				"date": row["date"],
-				"url": row["url"],
-				"summary": summary
-			})
+		# Hilangkan stopwords bahasa Indonesia & Inggris
+		stop_words = set(stopwords.words("english") + stopwords.words("indonesian"))
+		words = [word for word in words if word not in stop_words]
 
-		self.news_trends = summaries
-		print(f"[DEBUG] Generated {len(self.news_trends)} news summaries")
+		# POS tagging (Part of Speech)
+		tagged = pos_tag(words)
+
+		# Ambil hanya kata benda (NN, NNS)
+		nouns = [word for word, tag in tagged if tag in ["NN", "NNS"]]
+
+		# Hitung frekuensi
+		counter = Counter(nouns)
+		most_common = counter.most_common(top_n)
+
+		return [{"topic": topic, "count": count} for topic, count in most_common]
 
 
 	def load_competitor_data(self, competitor_file):
@@ -1128,7 +1138,11 @@ class SmartBusinessIntelligence:
 		"""Analyze market trends and consumer preferences"""
 		# For a real system, this would connect to news APIs, social media APIs, etc.
 		# Here we'll generate simulated trends based on our data
+		merged_articles = self.load_and_merge_news_articles("news_articles.csv")
+		text_data = " ".join(merged_articles["content"].tolist())
+		top_topics = extract_top_topics(text_data)
 		
+
 		# Generate food trends based on our product data
 		food_trends = self._generate_food_trends()
 		
@@ -1138,11 +1152,10 @@ class SmartBusinessIntelligence:
 		# Generate pricing trends
 		pricing_trends = self._generate_pricing_trends()
 		
-		# Generate news trends from news_articles BARU
-		news_trends = self._generate_news_trends()
 		# Generate social media trends from social_posts BARU
-		social_media_trends = self._generate_social_trends()
+		social_media_trends = self.social_trend_observatory()
 
+		
 		# Generate recommendations based on trends
 		trend_recommendations = self._generate_trend_recommendations(
 			food_trends, consumer_trends, pricing_trends
@@ -1152,8 +1165,8 @@ class SmartBusinessIntelligence:
 			"food_trends": food_trends,
 			"consumer_trends": consumer_trends,
 			"pricing_trends": pricing_trends,
-			"news_trends" : news_trends, #baru
-			"social_media_trends" : social_media_trends, #baru
+			"news_trends" : top_topics, #baru
+			"social_trends": social_media_trends, #baru
 			"recommendations": trend_recommendations
 		}
 	
@@ -1188,6 +1201,32 @@ class SmartBusinessIntelligence:
 			})
 		return trends
 
+	def _generate_news_summary(self, url, limit=3):
+		import ollama
+		from textwrap import shorten
+
+		# Ambil semua chunk yang berasal dari URL tersebut
+		matching_chunks = [row for row in self.news_articles if row.get("url") == url]
+
+		if not matching_chunks:
+			return "(No chunk found)"
+
+		# Gabungkan beberapa chunk jadi satu input untuk ringkasan
+		joined_content = "\n\n".join([row["text_content"] for row in matching_chunks[:limit]])
+
+		# Prompt ringkasan
+		prompt = f"Berikan ringkasan singkat dari artikel berita berikut:\n\n{joined_content}\n\nRingkasan:"
+		
+		try:
+			response = ollama.chat(
+				model="openhermes",
+				messages=[{"role": "user", "content": prompt}]
+			)
+			return shorten(response['message']['content'], width=500, placeholder="...")
+		except Exception as e:
+			return f"(Gagal merangkum: {e})"
+
+	#===================================================================================#
 
 	def _generate_food_trends(self):
 		"""Generate food trend analysis"""
@@ -2093,6 +2132,47 @@ class SmartBusinessIntelligence:
 				"Monitor competitor activities and customer feedback"
 			]
 		}
+
+def extract_top_topics(text_data, top_n=20):
+    import re
+    from collections import Counter
+
+    # Whitelist ide bisnis
+    BUSINESS_KEYWORDS = {
+    "aksesoris_gaming", "artisanal_bakery", "ayam", "bakery", "bakso", "barbershop",
+    "bengkel", "biodegradable_produk", "camilan", "catering", "coldbrew", "coffe",
+    "cuci", "cuci_motor", "daur_ulang", "desain_interior", "detail_motor", "diet_sehat",
+    "distro", "eco_organik", "edu_tube_lowtech", "ethnic", "frozen", "frozen_meals",
+    "functional_beverages", "functional_food", "gorengan", "health_drinks",
+    "hyperlocal_tourism", "infused_water", "jasadesain", "jasakonten", "jajanan",
+    "jual_pulsa", "katering", "katering_sehat", "katering_sehat_personal",
+    "kelas_digital", "kemasan_ramah_lingkungan", "kombucha", "konter_hp", "kopi",
+    "kopi literan", "kotak_langganan", "kue", "kuliner_etnik", "kursus_keahlian",
+    "kursus_online", "laundry", "laundry_aplikasi", "lele", "lowtech_toys", "madu",
+    "mainan_edukasi", "makanan_sehat", "masakan_rumahan", "marketplace_upcycle",
+    "microgreens", "microinfluencer_marketing", "mie", "minimanet", "minuman",
+    "minuman_herbal", "olshop_thrift", "pakaian", "pakaian_bekas", "pecel", "pet_care",
+    "pet_grooming", "plant_based", "plant_based_cafe", "pot_dekoratif",
+    "produk_lokal", "produk_refill", "ready_to_heat", "rongsok", "sambal",
+    "sate", "sharing_economy", "skincare_lokal", "smoothies", "specialty_coffee",
+    "streaming_gear", "subscription_box", "tas", "tanaman_hias", "teh",
+    "tempe", "thrift", "thrift_shop", "thrift_store", "upcycled", "warteg",
+    "webinar", "wellness_snack", "wisata_lokal"
+	}
+
+    text_data = text_data.lower()
+    words = re.findall(r'\b[a-zA-Z]+\b', text_data)
+
+    # Ambil hanya kata yang ada dalam daftar whitelist
+    keywords = [word for word in words if word in BUSINESS_KEYWORDS]
+
+    counter = Counter(keywords)
+    most_common = counter.most_common(top_n)
+
+	# Filter only top 10 items by count
+    top_counts = dict(most_common)
+    return [{"topic": topic, "count": count} for topic, count in list(top_counts.items())[:5]]
+
 
 def main():
 	"""Main function to demonstrate the system"""
