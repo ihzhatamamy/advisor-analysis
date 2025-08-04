@@ -209,7 +209,7 @@ class SmartBusinessIntelligence:
 
 	def social_trend_observatory(self):
 		text_data = self.load_social_post_text("social_posts.csv")
-		return extract_top_topics(text_data, top_n=10)
+		return extract_top_topics(text_data, top_n=5)
 
 	def load_and_merge_news_articles(self, csv_path):
 		df = pd.read_csv(csv_path)
@@ -256,7 +256,6 @@ class SmartBusinessIntelligence:
 		most_common = counter.most_common(top_n)
 
 		return [{"topic": topic, "count": count} for topic, count in most_common]
-
 
 	def load_competitor_data(self, competitor_file):
 		"""Load competitor data from CSV file"""
@@ -1648,16 +1647,17 @@ class SmartBusinessIntelligence:
 			"food_trends": [t.get("trend") for t in trend_data.get("food_trends", [])],
 			"consumer_trends": [t.get("trend") for t in trend_data.get("consumer_trends", [])],
 			"pricing_trends": [t.get("trend") for t in trend_data.get("pricing_trends", [])],
-			"news_trends": [t.get("topic") for t in trend_data.get("news_trends", [])],
-			"social_trends": [t.get("topic") for t in trend_data.get("social_trends", [])]
+			"news_trends": [t.get("name") for t in trend_data.get("news_trends", [])],
+			"social_trends": [t.get("name") for t in trend_data.get("social_trends", [])],
 		}
 		
 		# Add detailed trend information
 		trends["top_food_trends"] = trend_data.get("food_trends", [])[:3]
 		trends["top_consumer_trends"] = trend_data.get("consumer_trends", [])[:3]
-		trends["news_trends"] = trend_data.get("news_trends", [])[:5]
+		trends["top_news_trends"] = trend_data.get("news_trends", [])[:5]
 		trends["top_social_trends"] = trend_data.get("social_trends", [])[:5]
 		
+		print("[DEBUG] Final trends result:", trends)
 		return trends
 	
 	def _generate_consolidated_recommendations(self, cross_sell_data, phr_data, competitor_data, trend_data):
@@ -1912,9 +1912,9 @@ class SmartBusinessIntelligence:
 			conclusion += f"Aligning with market trends such as {food_trends[0]} will be crucial for future success. "
 			
 		#BARU
-		news_trends = dashboard["trend_analysis"].get("news_trends", [])
-		if news_trends:
-			conclusion += f"Additionally, trending business ideas like {news_trends[0]['topic']} from recent news & social media sources show strong market interest. "
+		top_news_trends = dashboard["trend_analysis"].get("top_news_trends", [])
+		if top_news_trends:
+			conclusion += f"Additionally, trending business ideas like {top_news_trends[0]['category']} from recent news & social media sources show strong market interest. "
 
 		# Add final recommendation
 		conclusion += "By implementing the strategic recommendations outlined in this report, "
@@ -2145,45 +2145,61 @@ class SmartBusinessIntelligence:
 			]
 		}
 
-def extract_top_topics(text_data, top_n=20):
+def extract_top_topics(text_data, top_n=5):
     import re
     from collections import Counter
 
-    # Whitelist ide bisnis
     BUSINESS_KEYWORDS = {
-    "aksesoris_gaming", "artisanal_bakery", "ayam", "bakery", "bakso", "barbershop",
-    "bengkel", "biodegradable_produk", "camilan", "catering", "coldbrew", "coffe",
-    "cuci", "cuci_motor", "daur_ulang", "desain_interior", "detail_motor", "diet_sehat",
-    "distro", "eco_organik", "edu_tube_lowtech", "ethnic", "frozen", "frozen_meals",
-    "functional_beverages", "functional_food", "gorengan", "health_drinks",
-    "hyperlocal_tourism", "infused_water", "jasadesain", "jasakonten", "jajanan",
-    "jual_pulsa", "katering", "katering_sehat", "katering_sehat_personal",
-    "kelas_digital", "kemasan_ramah_lingkungan", "kombucha", "konter_hp", "kopi",
-    "kopi literan", "kotak_langganan", "kue", "kuliner_etnik", "kursus_keahlian",
-    "kursus_online", "laundry", "laundry_aplikasi", "lele", "lowtech_toys", "madu",
-    "mainan_edukasi", "makanan_sehat", "masakan_rumahan", "marketplace_upcycle",
-    "microgreens", "microinfluencer_marketing", "mie", "minimanet", "minuman",
-    "minuman_herbal", "olshop_thrift", "pakaian", "pakaian_bekas", "pecel", "pet_care",
-    "pet_grooming", "plant_based", "plant_based_cafe", "pot_dekoratif",
-    "produk_lokal", "produk_refill", "ready_to_heat", "rongsok", "sambal",
-    "sate", "sharing_economy", "skincare_lokal", "smoothies", "specialty_coffee",
-    "streaming_gear", "subscription_box", "tas", "tanaman_hias", "teh",
-    "tempe", "thrift", "thrift_shop", "thrift_store", "upcycled", "warteg",
-    "webinar", "wellness_snack", "wisata_lokal"
+		"Coffee": ["kopi", "coffee", "espresso", "latte", "americano", "kopi literan", "specialty_coffee", "coldbrew"],
+		"Healthy Drinks": ["smoothies", "infused_water", "kombucha", "health_drinks", "functional_beverages", "minuman_herbal"],
+		"Milk Alternatives": ["oat", "almond", "soy", "plant_based", "plant_based_cafe"],
+		"Local Flavors": ["aren", "gula aren", "susu", "madu", "kuliner_etnik", "ethnic"],
+		"Frozen & Ready Meals": ["frozen", "frozen_meals", "ready_to_heat", "masakan_rumahan", "katering_sehat_personal"],
+		"Snacks & Street Food": ["jajanan", "camilan", "gorengan", "kue", "tempe", "sambal"],
+		"Fashion": ["thrift", "thrift_shop", "thrift_store", "pakaian", "pakaian_bekas", "distro", "olshop_thrift"],
+		"Food Services": ["warteg", "katering", "catering", "katering_sehat", "bakso", "sate", "ayam", "pecel", "lele", "mie", "bakery", "artisanal_bakery"],
+		"Home Services": ["laundry", "laundry_aplikasi", "cuci_motor", "detail_motor"],
+		"Pets & Grooming": ["pet_care", "pet_grooming"],
+		"Beauty & Wellness": ["skincare_lokal", "wellness_snack", "diet_sehat"],
+		"Creative & Digital": ["jasadesain", "jasakonten", "konten_kreator", "kelas_digital", "webinar", "kursus_online", "kursus_keahlian", "edu_tube_lowtech"],
+		"Technology & Gaming": ["aksesoris_gaming", "streaming_gear", "gaming_accessories"],
+		"Eco-Friendly": ["biodegradable_produk", "daur_ulang", "eco_organik", "produk_refill", "kemasan_ramah_lingkungan", "upcycled", "marketplace_upcycle", "sharing_economy"],
+		"Retail & Reseller": ["minimanet", "konter_hp", "jual_pulsa", "subscription_box", "kotak_langganan", "produk_lokal"],
+		"Hobbies & Decor": ["tanaman_hias", "pot_dekoratif", "mainan_edukasi", "lowtech_toys", "desain_interior"],
+		"Tourism": ["wisata_lokal", "hyperlocal_tourism"]
 	}
 
+    keyword_to_category = get_all_business_keywords(BUSINESS_KEYWORDS)
     text_data = text_data.lower()
-    words = re.findall(r'\b[a-zA-Z]+\b', text_data)
+    
+    # Ambil kata satu per satu (alphanumeric)
+    words = re.findall(r'\b[a-zA-Z_]+\b', text_data)
+    
+    # Filter hanya yang termasuk business keyword
+    matched_words = [word for word in words if word in keyword_to_category]
+    
+    # Hitung jumlah kemunculan
+    word_counts = Counter(matched_words)
 
-    # Ambil hanya kata yang ada dalam daftar whitelist
-    keywords = [word for word in words if word in BUSINESS_KEYWORDS]
+    # Format hasil akhir
+    results = []
+    for word, count in word_counts.most_common(top_n):
+        category = keyword_to_category[word]
+        results.append({
+            "category": category,
+            "name": word,
+            "count": count
+        })
+    
+    return results
 
-    counter = Counter(keywords)
-    most_common = counter.most_common(top_n)
+def get_all_business_keywords(business_keywords):
+    keyword_to_category = {}
+    for category, keywords in business_keywords.items():
+        for word in keywords:
+            keyword_to_category[word.lower()] = category  # lowercase untuk kecocokan akurat
+    return keyword_to_category
 
-	# Filter only top 10 items by count
-    top_counts = dict(most_common)
-    return [{"topic": topic, "count": count} for topic, count in list(top_counts.items())[:5]]
 
 
 def main():
