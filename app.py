@@ -1138,11 +1138,17 @@ class SmartBusinessIntelligence:
 		"""Analyze market trends and consumer preferences"""
 		# For a real system, this would connect to news APIs, social media APIs, etc.
 		# Here we'll generate simulated trends based on our data
+
+		# BARU
 		merged_articles = self.load_and_merge_news_articles("news_articles.csv")
 		text_data = " ".join(merged_articles["content"].tolist())
 		top_topics = extract_top_topics(text_data)
 		
+		# BARU
+		# Generate social media trends from social_posts 
+		social_media_trends = self.social_trend_observatory()
 
+		
 		# Generate food trends based on our product data
 		food_trends = self._generate_food_trends()
 		
@@ -1151,10 +1157,6 @@ class SmartBusinessIntelligence:
 		
 		# Generate pricing trends
 		pricing_trends = self._generate_pricing_trends()
-		
-		# Generate social media trends from social_posts BARU
-		social_media_trends = self.social_trend_observatory()
-
 		
 		# Generate recommendations based on trends
 		trend_recommendations = self._generate_trend_recommendations(
@@ -1428,6 +1430,7 @@ class SmartBusinessIntelligence:
 		recommendations = recommendations[:5]
 		
 		return recommendations
+	
 	def generate_dashboard(self):
 		"""Generate a comprehensive business intelligence dashboard"""
 		# Collect data from all modules
@@ -1644,12 +1647,16 @@ class SmartBusinessIntelligence:
 		trends = {
 			"food_trends": [t.get("trend") for t in trend_data.get("food_trends", [])],
 			"consumer_trends": [t.get("trend") for t in trend_data.get("consumer_trends", [])],
-			"pricing_trends": [t.get("trend") for t in trend_data.get("pricing_trends", [])]
+			"pricing_trends": [t.get("trend") for t in trend_data.get("pricing_trends", [])],
+			"news_trends": [t.get("topic") for t in trend_data.get("news_trends", [])],
+			"social_trends": [t.get("topic") for t in trend_data.get("social_trends", [])]
 		}
 		
 		# Add detailed trend information
 		trends["top_food_trends"] = trend_data.get("food_trends", [])[:3]
 		trends["top_consumer_trends"] = trend_data.get("consumer_trends", [])[:3]
+		trends["news_trends"] = trend_data.get("news_trends", [])[:5]
+		trends["top_social_trends"] = trend_data.get("social_trends", [])[:5]
 		
 		return trends
 	
