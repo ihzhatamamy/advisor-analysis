@@ -24,7 +24,11 @@ if merchant_file and competitor_file:
     sbi.load_data("uploaded_merchant.xlsx")
     sbi.load_competitor_data("uploaded_competitor.csv")
 
+    #baru
+    sbi.load_news_articles_csv("news_articles.csv")
+    sbi.load_social_post_text("social_posts.csv")
     st.success("Data loaded successfully!")
+    
 
     # Tabs for each analysis
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -65,6 +69,13 @@ if merchant_file and competitor_file:
         st.table(pd.DataFrame(trends["food_trends"]))
         st.write("Consumer Trends:")
         st.table(pd.DataFrame(trends["consumer_trends"]))
+
+        #Baru
+        st.write("News Trends:")
+        st.table(pd.DataFrame(trends["news_trends"]))
+        st.write("Social Media Trends:")
+        st.table(pd.DataFrame(trends["social_trends"]))
+
         st.write("Recommendations:")
         st.table(pd.DataFrame(trends["recommendations"]))
 

@@ -16,6 +16,23 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
+#baru
+from collections import Counter
+import re
+from collections import Counter
+from nltk.corpus import stopwords
+from nltk import pos_tag, word_tokenize
+import nltk
+nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk import pos_tag
+from collections import Counter
+import string
+
+
 # Optional: Ollama integration for AI capabilities
 try:
 	import ollama
@@ -33,6 +50,9 @@ class SmartBusinessIntelligence:
 		self.product_data = None
 		self.geografis_data = None
 		self.sales_data = None
+
+		self.news_articles = []
+		self.social_posts = []
 		
 		# Load data if provided
 		if data_path:
@@ -61,11 +81,19 @@ class SmartBusinessIntelligence:
 					print(f"Loaded product data: {len(product_data)} rows")
 					print("Product data columns:", product_data.columns.tolist())
 					
+					self.product_data = product_data
+					self.product_data = product_data.dropna(how='all').reset_index(drop=True)
+					self.product_data.columns = self.product_data.columns.str.strip()
+					self.product_data.columns = self.product_data.columns.str.replace('\u00a0', '', regex=True)
+
 					# Clean and process data
 					self.business_data = business_info.dropna(how='all').reset_index(drop=True)
 					self.product_data = product_data.dropna(how='all').reset_index(drop=True)
 					self.geografis_data = geografis_data.dropna(how='all').reset_index(drop=True)
-					
+					print("Kolom tersedia:", self.product_data.columns.tolist())
+					print("Kolom product_data:", [repr(col) for col in self.product_data.columns])
+
+
 					# Try to load customer data, but don't fail if it doesn't exist
 					try:
 						customer_data = pd.read_excel(data_path, sheet_name='Customer')
@@ -118,7 +146,8 @@ class SmartBusinessIntelligence:
 					'City': ''
 				}])
 			
-			# Extract menu/product data
+			# Extract menu/product data]
+
 			if 'product' in data.get('business_data', {}):
 				menu_items = data['business_data']['product']
 				self.product_data = pd.DataFrame([{
@@ -161,6 +190,73 @@ class SmartBusinessIntelligence:
 		except Exception as e:
 			print(f"Error processing JSON input: {str(e)}")
 	
+	#baru
+	def load_news_articles_csv(self, filepath):
+		"""Load news articles from a CSV file"""
+		try:
+			df = pd.read_csv(filepath)
+			self.news_articles = df.to_dict(orient='records')
+			print(f"Loaded {len(self.news_articles)} news articles from {filepath}")
+		except Exception as e:
+			print(f"Error loading news articles: {e}")
+
+	def load_social_post_text(self,csv_path="social_posts.csv"):
+		df = pd.read_csv(csv_path)
+		print(df.columns)
+		df = df.dropna(subset=["text_context"])  # Buang baris tanpa transkrip
+		combined_text = " ".join(df["text_context"].astype(str).tolist())
+		return combined_text
+
+	def social_trend_observatory(self):
+		text_data = self.load_social_post_text("social_posts.csv")
+		return extract_top_topics(text_data, top_n=5)
+
+	def load_and_merge_news_articles(self, csv_path):
+		df = pd.read_csv(csv_path)
+
+		# Pastikan kolom penting ada
+		required_cols = ["url", "content"]
+		for col in required_cols:
+			if col not in df.columns:
+				raise ValueError(f"Missing column: {col}")
+
+		if "metadata" in df.columns and df["metadata"].str.contains("paragraph").any():
+			# Ambil urutan chunk dari metadata
+			df["para_idx"] = df["metadata"].str.extract(r'paragraph\s*(\d+)').astype(float)
+			df = df.sort_values(by=["url", "para_idx"])
+		else:
+			df["para_idx"] = 0
+			df = df.sort_values(by=["url"])
+
+		# Gabungkan text_content jadi full artikel per URL
+		merged = df.groupby("url")["content"].apply(lambda x: "\n".join(x)).reset_index()
+
+		print(f"[DEBUG] Ditemukan {len(merged)} artikel unik")
+		return merged
+ 
+	def extract_top_topics(articles, top_n=10):
+		text_data = " ".join([a.get("title", "") + " " + a.get("summary", "") for a in articles])
+		text_data = text_data.lower()
+
+		# Tokenisasi & filter hanya huruf
+		words = re.findall(r'\b[a-zA-Z]+\b', text_data)
+
+		# Hilangkan stopwords bahasa Indonesia & Inggris
+		stop_words = set(stopwords.words("english") + stopwords.words("indonesian"))
+		words = [word for word in words if word not in stop_words]
+
+		# POS tagging (Part of Speech)
+		tagged = pos_tag(words)
+
+		# Ambil hanya kata benda (NN, NNS)
+		nouns = [word for word, tag in tagged if tag in ["NN", "NNS"]]
+
+		# Hitung frekuensi
+		counter = Counter(nouns)
+		most_common = counter.most_common(top_n)
+
+		return [{"topic": topic, "count": count} for topic, count in most_common]
+
 	def load_competitor_data(self, competitor_file):
 		"""Load competitor data from CSV file"""
 		try:
@@ -208,7 +304,7 @@ class SmartBusinessIntelligence:
 
 		# print("=== PRODUCT DATA ===")
 		# print(self.product_data)
-		# print(self.product_data['Nama Menu'])		
+		print(self.product_data['Nama Menu'])		
 		# print("=== PRODUCT DATA ===")
 
 		if self.product_data is None or len(self.product_data) < 2:
@@ -1041,6 +1137,16 @@ class SmartBusinessIntelligence:
 		"""Analyze market trends and consumer preferences"""
 		# For a real system, this would connect to news APIs, social media APIs, etc.
 		# Here we'll generate simulated trends based on our data
+
+		# BARU
+		merged_articles = self.load_and_merge_news_articles("news_articles.csv")
+		text_data = " ".join(merged_articles["content"].tolist())
+		top_topics = extract_top_topics(text_data)
+		
+		# BARU
+		# Generate social media trends from social_posts 
+		social_media_trends = self.social_trend_observatory()
+
 		
 		# Generate food trends based on our product data
 		food_trends = self._generate_food_trends()
@@ -1055,14 +1161,74 @@ class SmartBusinessIntelligence:
 		trend_recommendations = self._generate_trend_recommendations(
 			food_trends, consumer_trends, pricing_trends
 		)
-		
+
 		return {
 			"food_trends": food_trends,
 			"consumer_trends": consumer_trends,
 			"pricing_trends": pricing_trends,
+			"news_trends" : top_topics, #baru
+			"social_trends": social_media_trends, #baru
 			"recommendations": trend_recommendations
 		}
 	
+	#baru
+	def _generate_news_trends(self):
+		if not hasattr(self, 'news_articles') or not self.news_articles:
+			return []
+
+		trends = []
+		for article in self.news_articles[:3]: 
+			trends.append({
+				"title": article.get("title") or article.get("judul", "Tanpa Judul"),
+				"summary": article.get("summary") or article.get("konten", "")[:150],
+				"source": article.get("source", "unknown"),
+				"date": article.get("published_date", "unknown"),
+				"url": article.get("url", "")
+			})
+		return trends
+
+	def _generate_social_trends(self):
+		if not hasattr(self, "social_posts") or not self.social_posts:
+			return []
+
+		trends = []
+		for post in self.social_posts:
+			trends.append({
+				"title": post.get("caption", "")[:100],  # batasi 100 char
+				"summary": "",  
+				"source": post.get("platform", "social"),
+				"date": post.get("date", ""),
+				"url": post.get("url", "")
+			})
+		return trends
+
+	def _generate_news_summary(self, url, limit=3):
+		import ollama
+		from textwrap import shorten
+
+		# Ambil semua chunk yang berasal dari URL tersebut
+		matching_chunks = [row for row in self.news_articles if row.get("url") == url]
+
+		if not matching_chunks:
+			return "(No chunk found)"
+
+		# Gabungkan beberapa chunk jadi satu input untuk ringkasan
+		joined_content = "\n\n".join([row["text_content"] for row in matching_chunks[:limit]])
+
+		# Prompt ringkasan
+		prompt = f"Berikan ringkasan singkat dari artikel berita berikut:\n\n{joined_content}\n\nRingkasan:"
+		
+		try:
+			response = ollama.chat(
+				model="openhermes",
+				messages=[{"role": "user", "content": prompt}]
+			)
+			return shorten(response['message']['content'], width=500, placeholder="...")
+		except Exception as e:
+			return f"(Gagal merangkum: {e})"
+
+	#===================================================================================#
+
 	def _generate_food_trends(self):
 		"""Generate food trend analysis"""
 		# In a real system, this would analyze news articles, social media, etc.
@@ -1263,6 +1429,7 @@ class SmartBusinessIntelligence:
 		recommendations = recommendations[:5]
 		
 		return recommendations
+	
 	def generate_dashboard(self):
 		"""Generate a comprehensive business intelligence dashboard"""
 		# Collect data from all modules
@@ -1482,13 +1649,18 @@ class SmartBusinessIntelligence:
 		trends = {
 			"food_trends": [t.get("trend") for t in trend_data.get("food_trends", [])],
 			"consumer_trends": [t.get("trend") for t in trend_data.get("consumer_trends", [])],
-			"pricing_trends": [t.get("trend") for t in trend_data.get("pricing_trends", [])]
+			"pricing_trends": [t.get("trend") for t in trend_data.get("pricing_trends", [])],
+			"news_trends": [t.get("name") for t in trend_data.get("news_trends", [])],
+			"social_trends": [t.get("name") for t in trend_data.get("social_trends", [])],
 		}
 		
 		# Add detailed trend information
 		trends["top_food_trends"] = trend_data.get("food_trends", [])[:3]
 		trends["top_consumer_trends"] = trend_data.get("consumer_trends", [])[:3]
+		trends["top_news_trends"] = trend_data.get("news_trends", [])[:5]
+		trends["top_social_trends"] = trend_data.get("social_trends", [])[:5]
 		
+		print("[DEBUG] Final trends result:", trends)
 		return trends
 	
 	def _generate_consolidated_recommendations(self, cross_sell_data, phr_data, competitor_data, trend_data):
@@ -1740,7 +1912,12 @@ class SmartBusinessIntelligence:
 		food_trends = dashboard["trend_analysis"].get("food_trends", [])
 		if food_trends:
 			conclusion += f"Aligning with market trends such as {food_trends[0]} will be crucial for future success. "
-		
+			
+		#BARU
+		top_news_trends = dashboard["trend_analysis"].get("top_news_trends", [])
+		if top_news_trends:
+			conclusion += f"Additionally, trending business ideas like {top_news_trends[0]['category']} from recent news & social media sources show strong market interest. "
+
 		# Add final recommendation
 		conclusion += "By implementing the strategic recommendations outlined in this report, "
 		conclusion += f"{business_name} can enhance its competitive position and drive sustainable growth."
@@ -1970,6 +2147,63 @@ class SmartBusinessIntelligence:
 			]
 		}
 
+def extract_top_topics(text_data, top_n=5):
+    import re
+    from collections import Counter
+
+    BUSINESS_KEYWORDS = {
+		"Coffee": ["kopi", "coffee", "espresso", "latte", "americano", "kopi literan", "specialty_coffee", "coldbrew"],
+		"Healthy Drinks": ["smoothies", "infused_water", "kombucha", "health_drinks", "functional_beverages", "minuman_herbal"],
+		"Milk Alternatives": ["oat", "almond", "soy", "plant_based", "plant_based_cafe"],
+		"Local Flavors": ["aren", "gula aren", "susu", "madu", "kuliner_etnik", "ethnic"],
+		"Frozen & Ready Meals": ["frozen", "frozen_meals", "ready_to_heat", "masakan_rumahan", "katering_sehat_personal"],
+		"Snacks & Street Food": ["jajanan", "camilan", "gorengan", "kue", "tempe", "sambal"],
+		"Fashion": ["thrift", "thrift_shop", "thrift_store", "pakaian", "pakaian_bekas", "distro", "olshop_thrift"],
+		"Food Services": ["warteg", "katering", "catering", "katering_sehat", "bakso", "sate", "ayam", "pecel", "lele", "mie", "bakery", "artisanal_bakery"],
+		"Home Services": ["laundry", "laundry_aplikasi", "cuci_motor", "detail_motor"],
+		"Pets & Grooming": ["pet_care", "pet_grooming"],
+		"Beauty & Wellness": ["skincare_lokal", "wellness_snack", "diet_sehat"],
+		"Creative & Digital": ["jasadesain", "jasakonten", "konten_kreator", "kelas_digital", "webinar", "kursus_online", "kursus_keahlian", "edu_tube_lowtech"],
+		"Technology & Gaming": ["aksesoris_gaming", "streaming_gear", "gaming_accessories"],
+		"Eco-Friendly": ["biodegradable_produk", "daur_ulang", "eco_organik", "produk_refill", "kemasan_ramah_lingkungan", "upcycled", "marketplace_upcycle", "sharing_economy"],
+		"Retail & Reseller": ["minimanet", "konter_hp", "jual_pulsa", "subscription_box", "kotak_langganan", "produk_lokal"],
+		"Hobbies & Decor": ["tanaman_hias", "pot_dekoratif", "mainan_edukasi", "lowtech_toys", "desain_interior"],
+		"Tourism": ["wisata_lokal", "hyperlocal_tourism"]
+	}
+
+    keyword_to_category = get_all_business_keywords(BUSINESS_KEYWORDS)
+    text_data = text_data.lower()
+    
+    # Ambil kata satu per satu (alphanumeric)
+    words = re.findall(r'\b[a-zA-Z_]+\b', text_data)
+    
+    # Filter hanya yang termasuk business keyword
+    matched_words = [word for word in words if word in keyword_to_category]
+    
+    # Hitung jumlah kemunculan
+    word_counts = Counter(matched_words)
+
+    # Format hasil akhir
+    results = []
+    for word, count in word_counts.most_common(top_n):
+        category = keyword_to_category[word]
+        results.append({
+            "category": category,
+            "name": word,
+            "count": count
+        })
+    
+    return results
+
+def get_all_business_keywords(business_keywords):
+    keyword_to_category = {}
+    for category, keywords in business_keywords.items():
+        for word in keywords:
+            keyword_to_category[word.lower()] = category  # lowercase untuk kecocokan akurat
+    return keyword_to_category
+
+
+
 def main():
 	"""Main function to demonstrate the system"""
 	# Initialize the system
@@ -1981,9 +2215,9 @@ def main():
 	# Load competitor data
 	sbi.load_competitor_data("competitor.csv")
 
-	geografis = sbi.geografis_analysis()
+	# geografis = sbi.geografis_analysis()
 	print("\n=== Geografis Analysis ===")
-	print(geografis)
+	# print(geografis)
 	
 	# Generate cross-sell recommendations
 	cross_sell = sbi.cross_sell_intelligence()
